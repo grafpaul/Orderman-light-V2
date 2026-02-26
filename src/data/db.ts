@@ -334,6 +334,14 @@ export async function listProductsByCategory(categoryId: string): Promise<Produc
   );
 }
 
+export async function listAllActiveProducts(): Promise<Product[]> {
+  const db = await getDb();
+  return await db.select<Product[]>(
+    "SELECT id, name, price_cents, category_id, active, sort_index, group_id FROM products WHERE active=1 ORDER BY category_id ASC, sort_index ASC, name ASC"
+  );
+}
+
+
 export async function upsertProduct(p: { id?: string; name: string; price_cents: number; category_id: string; active?: number; sort_index?: number; group_id?: string | null }): Promise<void> {
   const db = await getDb();
   const id = p.id ?? crypto.randomUUID();

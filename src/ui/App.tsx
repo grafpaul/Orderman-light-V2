@@ -21,6 +21,7 @@ import {
   listOpenPrintJobs,
   markPrintJobPrinted,
   markPrintJobFailed,
+  listAllActiveProducts,
   getDb,
   getEventSummary,
   type EventSummary,
@@ -41,8 +42,7 @@ export default function App() {
 
   const [cats, setCats] = useState<Category[]>([]);
   const [groups, setGroups] = useState<PickupGroup[]>([]);
-  const [activeCat, setActiveCat] = useState<string>("");
-  const [products, setProducts] = useState<Product[]>([]);
+  const [productsByCat, setProductsByCat] = useState<Record<string, Product[]>>({});
   const [cart, setCart] = useState<CartLine[]>([]);
   const total = useMemo(() => sumCart(cart), [cart]);
 
@@ -61,31 +61,32 @@ export default function App() {
   const [pendingPayment, setPendingPayment] = useState<"CASH" | "CARD" | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const c = await listCategories();
-      setCats(c);
-      setActiveCat(c[0]?.id ?? "");
-      const g = await listPickupGroups();
-      setGroups(g);
+  (async () => {
+    const c = await listCategories();
+    setCats(c);
+    // Produkte für ALLE Kategorien laden (damit wir alles auf einer Seite anzeigen können)
+const lists = await Promise.all(c.map(cat => listProductsByCategory(cat.id)));
+const map: Record<string, Product[]> = {};
+for (let i = 0; i < c.length; i++) map[c[i].id] = lists[i] ?? [];
+setProductsByCat(map);
 
-      setPin(await readSetting("lock_pin"));
-      setBonPolicy((await readSetting("bon_policy")) as BonPolicy);
 
-      setEventName(await readSetting("event_name"));
-      setPrinterName(await readSetting("printer_name"));
-      setAutoPrint((await readSetting("auto_print")) === "true");
-            setAutoPrint((await readSetting("auto_print")) === "true");
-      setAutoPrint((await readSetting("auto_print")) === "true");
-    })().catch(console.error);
-  }, []);
+    
 
-  useEffect(() => {
-    (async () => {
-      if (!activeCat) return;
-      const p = await listProductsByCategory(activeCat);
-      setProducts(p);
-    })().catch(console.error);
-  }, [activeCat]);
+
+    const g = await listPickupGroups();
+    setGroups(g);
+
+    setPin(await readSetting("lock_pin"));
+    setBonPolicy((await readSetting("bon_policy")) as BonPolicy);
+
+    setEventName(await readSetting("event_name"));
+    setPrinterName(await readSetting("printer_name"));
+    setAutoPrint((await readSetting("auto_print")) === "true");
+  })().catch(console.error);
+}, []);
+
+
 
   function addToCart(p: Product) {
     setCart((prev) => {
@@ -198,35 +199,45 @@ export default function App() {
 
       {tab === "kassa" ? (
         <div className="main kassa">
+          
           <div className="panel">
-            <div className="panel-header"><h2>Kategorien</h2><span className="small">{cats.length}</span></div>
-            <div className="panel-body">
-              {cats.map((c) => (
-                <button type="button" key={c.id} className={"cat-btn " + (activeCat === c.id ? "active" : "")} onClick={() => setActiveCat(c.id)}>
-                  {c.name}
-                </button>
-              ))}
-              <div className="notice">
-                Event: <b>{eventName}</b><br />
-                Bon-Policy: <b>{bonPolicy}</b><br />
-                Drucker: <b>{printerName}</b>
-              </div>
-            </div>
+  <div className="panel-header">
+    <h2>Artikel</h2>
+    <span className="small">
+      {Object.values(productsByCat).reduce((a, arr) => a + (arr?.length ?? 0), 0)} aktiv
+    </span>
+  </div>
+
+  <div className="panel-body">
+    {cats.map((c) => {
+      const list = productsByCat[c.id] ?? [];
+      if (list.length === 0) return null;
+
+      return (
+        <div key={c.id} style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>
+            {c.name}
           </div>
 
-          <div className="panel">
-            <div className="panel-header"><h2>Produkte</h2><span className="small">{products.length} aktiv</span></div>
-            <div className="panel-body">
-              <div className="grid">
-                {products.map((p) => (
-                  <button type="button" key={p.id} className="tile" onClick={() => addToCart(p)}>
-                    <div className="name">{p.name}</div>
-                    <div className="price">{formatEuro(p.price_cents)}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="grid">
+            {list.map((p) => (
+              <button
+                type="button"
+                key={p.id}
+                className="tile"
+                onClick={() => addToCart(p)}
+              >
+                <div className="name">{p.name}</div>
+                <div className="price">{formatEuro(p.price_cents)}</div>
+              </button>
+            ))}
           </div>
+        </div>
+      );
+    })}
+  </div>
+</div>
+
 
           <div className="panel cart" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div className="panel-header"><h2>Warenkorb</h2><span className="small">{cart.reduce((a, l) => a + l.qty, 0)} Stk</span></div>
@@ -277,14 +288,24 @@ export default function App() {
           printerName={printerName}
           autoPrint={autoPrint}
           onReload={async () => {
-            setCats(await listCategories());
-            setGroups(await listPickupGroups());
-            if (activeCat) setProducts(await listProductsByCategory(activeCat));
-            setEventName(await readSetting("event_name"));
-            setPrinterName(await readSetting("printer_name"));
-            setAutoPrint((await readSetting("auto_print")) === "true");
-      setAutoPrint((await readSetting("auto_print")) === "true");
-          }}
+  const c = await listCategories();
+  setCats(c);
+
+  const g = await listPickupGroups();
+  setGroups(g);
+
+  // Produkte neu laden für alle Kategorien
+  const lists = await Promise.all(c.map(cat => listProductsByCategory(cat.id)));
+  const map: Record<string, Product[]> = {};
+  for (let i = 0; i < c.length; i++) map[c[i].id] = lists[i] ?? [];
+  setProductsByCat(map);
+
+  // Settings neu laden
+  setEventName(await readSetting("event_name"));
+  setPrinterName(await readSetting("printer_name"));
+  setAutoPrint((await readSetting("auto_print")) === "true");
+}}
+
           onPolicyChange={(p) => setBonPolicy(p)}
           onPinChange={(p) => setPin(p)}
         />
@@ -475,7 +496,6 @@ async function runFestabschluss() {
       setLockPin(await readSetting("lock_pin"));
       setEventName(await readSetting("event_name"));
       setPrinterName(await readSetting("printer_name"));
-            setAutoPrint((await readSetting("auto_print")) === "true");
       setAutoPrint((await readSetting("auto_print")) === "true");
     })().catch(console.error);
   }, []);

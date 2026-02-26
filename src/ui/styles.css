@@ -66,7 +66,7 @@ button { font: inherit; }
 
 .main{
   display:grid;
-  grid-template-columns: 280px 1fr 360px;
+  grid-template-columns: 1fr 420px;
   gap: 14px;
   padding: 14px;
   min-height: 0;
@@ -117,20 +117,20 @@ button { font: inherit; }
 
 .grid{
   display:grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
 }
 .tile{
   background: var(--tile);
   border: 1px solid var(--border);
   border-radius: var(--radius2);
-  padding: 16px;
+  padding: 22px;
   text-align:left;
-  min-height: 90px;
+  min-height: 120px;
 }
 .tile:hover{ background: var(--tileHover); }
-.tile .name{ font-weight: 750; font-size: 16px; margin-bottom: 10px; }
-.tile .price{ color: var(--muted); font-weight: 650; font-size: 14px; }
+.tile .name{ font-weight: 850; font-size: 18px; margin-bottom: 10px; }
+.tile .price{ color: var(--muted); font-weight: 750; font-size: 16px; }
 
 .cart{
   display:grid;
@@ -259,6 +259,10 @@ button { font: inherit; }
 .main.kassa .footer{
   margin-top: auto;
 }
+.main.kassa{
+  grid-template-columns: 1fr 360px;
+}
+
 
 
 /* v0.3.7: ensure cart panel can scroll and footer stays visible */
