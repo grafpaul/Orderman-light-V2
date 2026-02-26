@@ -145,19 +145,23 @@ button { font: inherit; }
   display:grid;
   grid-template-columns: 1fr auto;
   gap: 10px;
-  padding: 10px 10px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 14px;
   margin-bottom: 10px;
   background: rgba(255,255,255,.02);
 }
 .cart-row .title{ font-weight: 700; }
-.cart-row .meta{ color: var(--muted); font-size: 13px; margin-top:4px; }
+.cart-row .meta{ color: var(--muted); font-size: 12px; margin-top:4px; }
 .qty{
   display:flex;
-  flex-direction: column;
-  gap:6px;
-  align-items: stretch;
+  flex-direction: row;
+  gap:8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.qty .val{
+  min-width: 44px;
 }
 .qty button{
   min-width: 56px;
