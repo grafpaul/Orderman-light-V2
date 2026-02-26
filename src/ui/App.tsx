@@ -251,11 +251,11 @@ setProductsByCat(map);
                       {l.qty} × {formatEuro(l.product.price_cents)} • Pos: {formatEuro(l.qty * l.product.price_cents)}
                     </div>
                   </div>
-                  <div className="qty">
-                    <button type="button" onClick={() => inc(l.product.id)}>+</button>
-                    <div className="val">{l.qty}</div>
-                    <button type="button" onClick={() => dec(l.product.id)}>-</button>
-                  </div>
+                  <div className="qty qty-h">
+  <button type="button" onClick={() => dec(l.product.id)}>-</button>
+  <div className="val">{l.qty}</div>
+  <button type="button" onClick={() => inc(l.product.id)}>+</button>
+</div>
                 </div>
               ))}
             </div>
