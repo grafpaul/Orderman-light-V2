@@ -112,7 +112,7 @@ button { font: inherit; }
   color: var(--text);
   margin-bottom:10px;
 }
-.cat-btn:hover{ background: rgba(255,255,255,.03); border-color: var(--border); }
+.cat-btn:hover{ background: rgba(150, 39, 39, 0); border-color: var(--border); }
 .cat-btn.active{ border-color: rgba(34,197,94,.55); box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
 
 .grid{
@@ -121,17 +121,41 @@ button { font: inherit; }
   gap: 14px;
 }
 .tile{
-  background: var(--tile);
-  border: 1px solid var(--border);
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #d1d5db;
   border-radius: var(--radius2);
-  padding: 22px;
+  padding: 16px;
   text-align:left;
-  min-height: 120px;
+  min-height: 90px;
 }
-.tile:hover{ background: var(--tileHover); }
+
+.tile .name{
+  font-weight: 800;
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: #080808;
+}
+.tile .price{
+  color: #000000;
+  font-weight: 700;
+  font-size: 14px;
+}
+.tile:focus{
+  outline: none;
+  background: #ffffff;
+}
+.tile:active{
+  transform: scale(0.98);
+}
 .tile .name{ font-weight: 850; font-size: 18px; margin-bottom: 10px; }
 .tile .price{ color: var(--muted); font-weight: 750; font-size: 16px; }
-
+.tile:hover,
+.tile:active{
+  background: #ffffff; /* bleibt weiß */
+  border-color: #22c55e; /* grüner Rand */
+  box-shadow: 0 0 0 2px rgba(34,197,94,.15);
+}
 .cart{
   display:grid;
   grid-template-rows: auto 1fr auto;
