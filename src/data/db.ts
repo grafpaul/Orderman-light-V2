@@ -3,7 +3,17 @@ import Database from "@tauri-apps/plugin-sql";
 const DB_URL = "sqlite:orderman_light_v2.db";
 
 export type Category = { id: string; name: string; sort_index: number; default_group_id: string | null };
-export type Product = { id: string; name: string; price_cents: number; category_id: string; active: number; sort_index: number; group_id: string | null };
+export type Product = {
+  id: string;
+  name: string;
+  price_cents: number;
+  category_id: string;
+  active: number;
+  standard_active: number;
+  today_active: number;
+  sort_index: number;
+  group_id: string | null;
+};
 export type PickupGroup = { id: string; name: string; sort_index: number };
 
 export type Register = {
@@ -207,6 +217,8 @@ async function ensureSchema(db: Database) {
 
   await safeExec(db, "ALTER TABLE categories ADD COLUMN default_group_id TEXT");
   await safeExec(db, "ALTER TABLE products ADD COLUMN group_id TEXT");
+  await safeExec(db, "ALTER TABLE products ADD COLUMN standard_active INTEGER NOT NULL DEFAULT 1");
+await safeExec(db, "ALTER TABLE products ADD COLUMN today_active INTEGER NOT NULL DEFAULT 1");
   await safeExec(db, "ALTER TABLE products ADD COLUMN active INTEGER NOT NULL DEFAULT 0");
   await safeExec(db, "ALTER TABLE products ADD COLUMN sort_index INTEGER NOT NULL DEFAULT 1000");
 
@@ -341,6 +353,47 @@ export async function updatePickupGroupName(id: string, name: string): Promise<v
   await db.execute("UPDATE pickup_groups SET name=$2 WHERE id=$1", [id, trimmed]);
 }
 
+export async function listAllProducts(): Promise<Product[]> {
+  const db = await getDb();
+  return await db.select<Product[]>(
+    `SELECT id, name, price_cents, category_id, active, standard_active, today_active, sort_index, group_id
+     FROM products
+     WHERE active=1
+     ORDER BY category_id ASC, sort_index ASC, name ASC`
+  );
+}
+
+export async function updateProductTodayActive(id: string, todayActive: boolean): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE products SET today_active=$2 WHERE id=$1",
+    [id, todayActive ? 1 : 0]
+  );
+}
+
+export async function updateProductStandardActive(id: string, standardActive: boolean): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE products SET standard_active=$2 WHERE id=$1",
+    [id, standardActive ? 1 : 0]
+  );
+}
+
+export async function applyStandardToToday(): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE products SET today_active=standard_active WHERE active=1"
+  );
+}
+
+export async function setAllTodayActive(active: boolean): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE products SET today_active=$1 WHERE active=1",
+    [active ? 1 : 0]
+  );
+}
+
 export async function listCategories(): Promise<Category[]> {
   const db = await getDb();
   await cleanupLegacyCategories(db);
@@ -352,21 +405,14 @@ export async function listCategories(): Promise<Category[]> {
      ORDER BY sort_index ASC, name ASC`
   );
 }
-
 export async function listProductsByCategory(categoryId: string): Promise<Product[]> {
   const db = await getDb();
   return await db.select<Product[]>(
-    "SELECT * FROM products WHERE category_id=$1 AND active=1 ORDER BY sort_index ASC,name ASC",
-    [categoryId]
-  );
-}
-
-export async function listAllProducts(): Promise<Product[]> {
-  const db = await getDb();
-  return await db.select<Product[]>(
-    `SELECT *
+    `SELECT id, name, price_cents, category_id, active, standard_active, today_active, sort_index, group_id
      FROM products
-     ORDER BY active DESC, category_id ASC, sort_index ASC, name ASC`
+     WHERE category_id=$1 AND active=1 AND today_active=1
+     ORDER BY sort_index ASC, name ASC`,
+    [categoryId]
   );
 }
 

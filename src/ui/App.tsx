@@ -585,7 +585,7 @@ function EventSetup(props: {
       price_cents: cents,
       category_id: cat,
       group_id: groupId,
-      active: 0,
+      active: 1,
     });
 
     setProdName("");
