@@ -26,6 +26,7 @@ import {
   getEventSummary,
   listAllProducts,
   setProductActive,
+  updateProductTodayActive,
   listEventTemplates,
   saveCurrentAsEventTemplate,
   overwriteEventTemplate,
@@ -39,6 +40,19 @@ import { printRawWindows } from "./print";
 
 type CartLine = { product: Product; qty: number };
 type BonPolicy = "NEVER" | "ALWAYS" | "OPTIONAL";
+
+let appAlertImpl: ((message: string) => void) | null = null;
+let appConfirmImpl: ((message: string) => Promise<boolean>) | null = null;
+
+function appAlert(message: string) {
+  if (appAlertImpl) appAlertImpl(message);
+  else window.alert(message);
+}
+
+function appConfirm(message: string): Promise<boolean> {
+  if (appConfirmImpl) return appConfirmImpl(message);
+  return Promise.resolve(window.confirm(message));
+}
 
 function sumCart(lines: CartLine[]): number {
   return lines.reduce((acc, l) => acc + l.qty * l.product.price_cents, 0);
@@ -71,6 +85,11 @@ export default function App() {
   const [cashSuggestions, setCashSuggestions] = useState<number[]>([]);
   const [selectedCash, setSelectedCash] = useState<number | null>(null);
   const [manualCash, setManualCash] = useState("");
+  const [dialog, setDialog] = useState<{
+  type: "alert" | "confirm";
+  message: string;
+  resolve?: (value: boolean) => void;
+} | null>(null);
 
   async function reloadBaseData() {
     const c = await listCategories();
@@ -94,6 +113,23 @@ export default function App() {
   useEffect(() => {
     reloadBaseData().catch(console.error);
   }, []);
+
+  useEffect(() => {
+  appAlertImpl = (message: string) => {
+    setDialog({ type: "alert", message });
+  };
+
+  appConfirmImpl = (message: string) => {
+    return new Promise<boolean>((resolve) => {
+      setDialog({ type: "confirm", message, resolve });
+    });
+  };
+
+  return () => {
+    appAlertImpl = null;
+    appConfirmImpl = null;
+  };
+}, []);
 
   function addToCart(p: Product) {
     setCart((prev) => {
@@ -176,7 +212,7 @@ export default function App() {
 
       await checkout(payment, bonPolicy === "ALWAYS");
     } catch (e: any) {
-      alert("Bezahlen fehlgeschlagen:\n\n" + String(e?.message ?? e));
+      appAlert("Bezahlen fehlgeschlagen:\n\n" + String(e?.message ?? e));
     }
   }
 
@@ -189,7 +225,7 @@ export default function App() {
   }
 
   async function lockNow() {
-    if (window.confirm("Kassa sperren?")) setLocked(true);
+    if (await appConfirm("Kassa sperren?")) setLocked(true);
   }
 
   const manualCashCents = parsePriceToCentsSafe(manualCash);
@@ -309,7 +345,7 @@ export default function App() {
                 onClick={() => {
                   const cents = parsePriceToCentsSafe(manualCash);
                   if (cents === null || cents < total) {
-                    alert("Der eingegebene Betrag ist ungültig oder kleiner als die Summe.");
+                    appAlert("Der eingegebene Betrag ist ungültig oder kleiner als die Summe.");
                     return;
                   }
                   setSelectedCash(cents);
@@ -367,6 +403,21 @@ export default function App() {
           </div>
         </Modal>
       ) : null}
+
+      {dialog ? (
+  <AppDialog
+    type={dialog.type}
+    message={dialog.message}
+    onOk={() => {
+      if (dialog.type === "confirm") dialog.resolve?.(true);
+      setDialog(null);
+    }}
+    onCancel={() => {
+      if (dialog.type === "confirm") dialog.resolve?.(false);
+      setDialog(null);
+    }}
+  />
+) : null}
 
       {locked ? <LockScreen pin={pin} onUnlock={() => setLocked(false)} /> : null}
     </div>
@@ -549,7 +600,7 @@ function EventSetup(props: {
   }, [props.groups, groupId]);
 
   async function saveEventBase() {
-    if (!eventName.trim()) return alert("Veranstaltungsname fehlt.");
+    if (!eventName.trim()) return appAlert("Veranstaltungsname fehlt.");
 
     await writeSetting("event_name", eventName.trim());
     await writeSetting("bon_policy", policy);
@@ -558,7 +609,7 @@ function EventSetup(props: {
     props.onPolicyChange(policy);
     await props.onReload();
 
-    alert("Veranstaltung aktiviert.");
+    appAlert("Veranstaltung aktiviert.");
   }
 
   async function addPickupGroup() {
@@ -576,9 +627,9 @@ function EventSetup(props: {
 
   async function saveProduct() {
     const cents = parsePriceToCents(prodPrice);
-    if (!prodName.trim()) return alert("Name fehlt.");
-    if (Number.isNaN(cents) || cents <= 0) return alert("Preis ungültig.");
-    if (!cat) return alert("Kategorie wählen.");
+    if (!prodName.trim()) return appAlert("Name fehlt.");
+    if (Number.isNaN(cents) || cents <= 0) return appAlert("Preis ungültig.");
+    if (!cat) return appAlert("Kategorie wählen.");
 
     await upsertProduct({
       name: prodName.trim(),
@@ -593,30 +644,30 @@ function EventSetup(props: {
 
     await reloadProducts();
     await props.onReload();
-    alert("Produkt allgemein angelegt. Mit Häkchen aktivierst du es für die Veranstaltung.");
+    appAlert("Produkt allgemein angelegt. Mit Häkchen aktivierst du es für die Veranstaltung.");
   }
 
   async function saveTemplate() {
     const name = templateName.trim();
-    if (!name) return alert("Bitte Vorlagennamen eingeben.");
+    if (!name) return appAlert("Bitte Vorlagennamen eingeben.");
 
     await saveEventBase();
     await saveCurrentAsEventTemplate(name);
     setTemplateName("");
     await reloadTemplates();
 
-    alert("Vorlage gespeichert.");
+    appAlert("Vorlage gespeichert.");
   }
 
   async function overwriteTemplate() {
-    if (!selectedTemplateId) return alert("Bitte Vorlage auswählen.");
-    if (!confirm("Diese Vorlage wirklich mit dem aktuellen Stand überschreiben?")) return;
+    if (!selectedTemplateId) return appAlert("Bitte Vorlage auswählen.");
+    if (!(await appConfirm("Diese Vorlage wirklich mit dem aktuellen Stand überschreiben?"))) return;
 
     await saveEventBase();
     await overwriteEventTemplate(selectedTemplateId);
     await reloadTemplates();
 
-    alert("Vorlage überschrieben.");
+    appAlert("Vorlage überschrieben.");
   }
 
   const byCat = props.cats.map((c) => ({
@@ -652,13 +703,6 @@ function EventSetup(props: {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={saveEventBase}
-              style={{ ...btn, maxWidth: 320, background: "rgba(34,197,94,.18)", borderColor: "rgba(34,197,94,.45)" }}
-            >
-              Veranstaltung aktivieren
-            </button>
           </div>
         </div>
       </div>
@@ -684,44 +728,6 @@ function EventSetup(props: {
           <button type="button" onClick={addPickupGroup} style={{ ...btn, maxWidth: 320, marginTop: 12 }}>
             + Abholstation erstellen
           </button>
-        </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-header">
-          <h2>Produkte für Veranstaltung auswählen</h2>
-          <span className="small">{allProducts.filter((p) => p.active === 1).length} aktiv</span>
-        </div>
-
-        <div className="panel-body">
-          <div className="notice" style={{ marginBottom: 12 }}>
-            Häkchen = Produkt erscheint in der Kassa. Sortierung: Alkohol, Anti, Essen, Kaffee-Kuchen-Eis.
-          </div>
-
-          <div style={{ display: "grid", gap: 16 }}>
-            {byCat.map(({ cat, products }) => (
-              <div key={cat.id}>
-                <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>{cat.name}</div>
-
-                {products.length === 0 ? (
-                  <div className="small">Keine Produkte in dieser Kategorie.</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {products.map((p) => (
-                      <ProductCheckRow
-                        key={p.id}
-                        product={p}
-                        onChange={async () => {
-                          await reloadProducts();
-                          await props.onReload();
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -776,25 +782,39 @@ function EventSetup(props: {
 
       <div className="panel">
         <div className="panel-header">
-          <h2>Produkte allgemein verwalten</h2>
+          <h2>Produkte verwalten</h2>
           <span className="small">{allProducts.length} Produkte</span>
         </div>
 
         <div className="panel-body">
-          <div style={{ display: "grid", gap: 10 }}>
-            {allProducts.length === 0 ? <div className="small">Noch keine Produkte angelegt.</div> : null}
+          <div className="notice" style={{ marginBottom: 12 }}>
+            Häkchen = Produkt erscheint heute in der Kassa. Preis, Kategorie und Abholstation kannst du jederzeit ändern.
+          </div>
 
-            {allProducts.map((p) => (
-              <ProductEditRow
-                key={p.id}
-                product={p}
-                cats={props.cats}
-                groups={props.groups}
-                onSaved={async () => {
-                  await reloadProducts();
-                  await props.onReload();
-                }}
-              />
+          <div style={{ display: "grid", gap: 16 }}>
+            {byCat.map(({ cat, products }) => (
+              <div key={cat.id}>
+                <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>{cat.name}</div>
+
+                {products.length === 0 ? (
+                  <div className="small">Keine Produkte in dieser Kategorie.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {products.map((p) => (
+                      <ProductManageRow
+                        key={p.id}
+                        product={p}
+                        cats={props.cats}
+                        groups={props.groups}
+                        onSaved={async () => {
+                          await reloadProducts();
+                          await props.onReload();
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -899,33 +919,33 @@ function Settings(props: {
   }, []);
 
   async function saveRegister() {
-    if (!regName.trim()) return alert("Kassa-Name fehlt.");
-    if (!regPrefix.trim()) return alert("Prefix fehlt.");
+    if (!regName.trim()) return appAlert("Kassa-Name fehlt.");
+    if (!regPrefix.trim()) return appAlert("Prefix fehlt.");
 
     await updateRegisterNamePrefix(regName.trim(), regPrefix.trim().toUpperCase());
-    alert("Kassa gespeichert.");
+    appAlert("Kassa gespeichert.");
   }
 
   async function savePrinter() {
-    if (!printerName.trim()) return alert("Druckername fehlt.");
+    if (!printerName.trim()) return appAlert("Druckername fehlt.");
     await writeSetting("printer_name", printerName.trim());
     await props.onReload();
-    alert("Drucker gespeichert.");
+    appAlert("Drucker gespeichert.");
   }
 
   async function savePin() {
     const p = lockPin.trim();
-    if (!/^\d{4,6}$/.test(p)) return alert("PIN bitte 4–6 Ziffern.");
+    if (!/^\d{4,6}$/.test(p)) return appAlert("PIN bitte 4–6 Ziffern.");
     await writeSetting("lock_pin", p);
     props.onPinChange(p);
-    alert("PIN gespeichert.");
+    appAlert("PIN gespeichert.");
   }
 
   async function applyTemplateFromSettings() {
-    if (!selectedTemplateId) return alert("Bitte Vorlage auswählen.");
+    if (!selectedTemplateId) return appAlert("Bitte Vorlage auswählen.");
 
     const t = templates.find((x) => x.id === selectedTemplateId);
-    if (!confirm(`Vorlage "${t?.name ?? "ausgewählt"}" laden? Aktive Produkte und Eventdaten werden überschrieben.`)) return;
+    if (!(await appConfirm(`Vorlage "${t?.name ?? "ausgewählt"}" laden? Aktive Produkte und Eventdaten werden überschrieben.`))) return;
 
     await applyEventTemplate(selectedTemplateId);
     const freshPolicy = (await readSetting("bon_policy")) as BonPolicy;
@@ -934,20 +954,20 @@ function Settings(props: {
     await props.onReload();
     await reloadProducts();
 
-    alert("Vorlage geladen.");
+    appAlert("Vorlage geladen.");
   }
 
   async function removeTemplate() {
-    if (!selectedTemplateId) return alert("Bitte Vorlage auswählen.");
+    if (!selectedTemplateId) return appAlert("Bitte Vorlage auswählen.");
 
     const t = templates.find((x) => x.id === selectedTemplateId);
-    if (!confirm(`Vorlage "${t?.name ?? "ausgewählt"}" wirklich löschen?`)) return;
+    if (!(await appConfirm(`Vorlage "${t?.name ?? "ausgewählt"}" wirklich löschen?`))) return;
 
     await deleteEventTemplate(selectedTemplateId);
     setSelectedTemplateId("");
     await reloadTemplates();
 
-    alert("Vorlage gelöscht.");
+    appAlert("Vorlage gelöscht.");
   }
 
   async function runFestabschluss() {
@@ -955,13 +975,13 @@ function Settings(props: {
       setSummary(await getEventSummary());
       setShowSummary(true);
     } catch (e: any) {
-      alert("Festabschluss fehlgeschlagen: " + String(e?.message ?? e));
+      appAlert("Festabschluss fehlgeschlagen: " + String(e?.message ?? e));
     }
   }
 
   async function resetAllData() {
     if (
-      !confirm(
+      !(await appConfirm(
         "Wirklich ALLE Daten löschen und Einstellungen zurücksetzen?\n\n" +
           "- Produkte\n" +
           "- Vorlagen\n" +
@@ -969,11 +989,11 @@ function Settings(props: {
           "- Druck-Queue\n" +
           "- Einstellungen\n\n" +
           "Dieser Vorgang kann nicht rückgängig gemacht werden."
-      )
+      ))
     )
       return;
 
-    if (!confirm("Letzte Sicherheitsfrage: Wirklich alles löschen?")) return;
+    if (!(await appConfirm("Letzte Sicherheitsfrage: Wirklich alles löschen?"))) return;
 
     try {
       const db = await getDb();
@@ -986,10 +1006,10 @@ function Settings(props: {
       await db.execute("DELETE FROM products");
       await db.execute("DELETE FROM app_settings");
 
-      alert("Alles gelöscht. App startet neu.");
+      appAlert("Alles gelöscht. App startet neu.");
       window.location.reload();
     } catch (e: any) {
-      alert("Fehler beim Löschen: " + String(e?.message ?? e));
+      appAlert("Fehler beim Löschen: " + String(e?.message ?? e));
     }
   }
 
@@ -1141,47 +1161,7 @@ function Settings(props: {
   );
 }
 
-function ProductCheckRow(props: { product: Product; onChange: () => Promise<void> }) {
-  const [active, setActive] = useState(props.product.active === 1);
-  const [busy, setBusy] = useState(false);
-
-  async function toggle() {
-    setBusy(true);
-    try {
-      await setProductActive(props.product.id, !active);
-      setActive(!active);
-      await props.onChange();
-    } catch (e: any) {
-      alert("Änderung fehlgeschlagen: " + String(e?.message ?? e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <label
-      style={{
-        display: "grid",
-        gridTemplateColumns: "auto 1fr auto",
-        gap: 12,
-        alignItems: "center",
-        border: "1px solid var(--border)",
-        borderRadius: 14,
-        padding: 12,
-        background: active ? "rgba(34,197,94,.08)" : "rgba(255,255,255,.02)",
-      }}
-    >
-      <input type="checkbox" checked={active} disabled={busy} onChange={toggle} />
-      <div>
-        <div style={{ fontWeight: 900 }}>{props.product.name}</div>
-        <div className="small">{active ? "Aktiv in der Kassa" : "Nicht aktiv"}</div>
-      </div>
-      <div style={{ fontWeight: 900 }}>{formatEuro(props.product.price_cents)}</div>
-    </label>
-  );
-}
-
-function ProductEditRow(props: {
+function ProductManageRow(props: {
   product: Product;
   cats: Category[];
   groups: PickupGroup[];
@@ -1189,47 +1169,61 @@ function ProductEditRow(props: {
 }) {
   const p = props.product;
 
+  const [active, setActive] = useState(p.today_active === 1);
   const [name, setName] = useState(p.name);
   const [price, setPrice] = useState((p.price_cents / 100).toFixed(2).replace(".", ","));
   const [categoryId, setCategoryId] = useState(p.category_id);
   const [groupId, setGroupId] = useState(p.group_id ?? props.groups[0]?.id ?? "grp_buffet");
   const [saving, setSaving] = useState(false);
 
+  async function toggleActive() {
+    setSaving(true);
+    try {
+      await updateProductTodayActive(p.id, !active);
+      setActive(!active);
+      await props.onSaved();
+    } catch (e: any) {
+      appAlert("Aktiv-Status konnte nicht geändert werden: " + String(e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function save() {
     const cents = parsePriceToCents(price);
-    if (!name.trim()) return alert("Produktname fehlt.");
-    if (Number.isNaN(cents) || cents <= 0) return alert("Preis ungültig.");
+    if (!name.trim()) return appAlert("Produktname fehlt.");
+    if (Number.isNaN(cents) || cents <= 0) return appAlert("Preis ungültig.");
 
     setSaving(true);
     try {
       await upsertProduct({
-        id: p.id,
-        name: name.trim(),
-        price_cents: cents,
-        category_id: categoryId,
-        group_id: groupId,
-        active: p.active,
-        sort_index: p.sort_index,
-      });
+  id: p.id,
+  name: name.trim(),
+  price_cents: cents,
+  category_id: categoryId,
+  group_id: groupId,
+  active: 1,
+  sort_index: p.sort_index,
+});
 
       await props.onSaved();
-      alert("Produkt gespeichert.");
+      appAlert("Produkt gespeichert.");
     } catch (e: any) {
-      alert("Speichern fehlgeschlagen: " + String(e?.message ?? e));
+      appAlert("Speichern fehlgeschlagen: " + String(e?.message ?? e));
     } finally {
       setSaving(false);
     }
   }
 
   async function remove() {
-    if (!confirm(`Produkt "${p.name}" wirklich dauerhaft löschen?`)) return;
+    if (!(await appConfirm(`Produkt "${p.name}" wirklich dauerhaft löschen?`))) return;
 
     setSaving(true);
     try {
       await deleteProduct(p.id);
       await props.onSaved();
     } catch (e: any) {
-      alert("Löschen fehlgeschlagen: " + String(e?.message ?? e));
+      appAlert("Löschen fehlgeschlagen: " + String(e?.message ?? e));
     } finally {
       setSaving(false);
     }
@@ -1241,10 +1235,15 @@ function ProductEditRow(props: {
         border: "1px solid var(--border)",
         borderRadius: 16,
         padding: 12,
-        background: p.active === 1 ? "rgba(255,255,255,.02)" : "rgba(239,68,68,.06)",
+        background: active ? "rgba(34,197,94,.08)" : "rgba(255,255,255,.02)",
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr .7fr 1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1.4fr .7fr 1fr 1fr", gap: 10, alignItems: "end" }}>
+        <label style={{ display: "grid", gap: 6, justifyItems: "center" }}>
+          <span className="small">Heute</span>
+          <input type="checkbox" checked={active} disabled={saving} onChange={toggleActive} />
+        </label>
+
         <div>
           <label className="small">Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} style={inp} />
@@ -1278,11 +1277,7 @@ function ProductEditRow(props: {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
-        <div className="small" style={{ display: "flex", alignItems: "center" }}>
-          {p.active === 1 ? "Aktuell aktiv" : "Aktuell nicht aktiv"}
-        </div>
-
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <button
           type="button"
           disabled={saving}
@@ -1298,10 +1293,50 @@ function ProductEditRow(props: {
           style={{ ...btn, background: "rgba(239,68,68,.12)", borderColor: "rgba(239,68,68,.45)" }}
           onClick={remove}
         >
-          Produkt löschen
+          Produkt dauerhaft löschen
         </button>
       </div>
     </div>
+  );
+}
+
+function ProductCheckRow(props: { product: Product; onChange: () => Promise<void> }) {
+  const [active, setActive] = useState(props.product.active === 1);
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      await setProductActive(props.product.id, !active);
+      setActive(!active);
+      await props.onChange();
+    } catch (e: any) {
+      appAlert("Änderung fehlgeschlagen: " + String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label
+      style={{
+        display: "grid",
+        gridTemplateColumns: "auto 1fr auto",
+        gap: 12,
+        alignItems: "center",
+        border: "1px solid var(--border)",
+        borderRadius: 14,
+        padding: 12,
+        background: active ? "rgba(34,197,94,.08)" : "rgba(255,255,255,.02)",
+      }}
+    >
+      <input type="checkbox" checked={active} disabled={busy} onChange={toggle} />
+      <div>
+        <div style={{ fontWeight: 900 }}>{props.product.name}</div>
+        <div className="small">{active ? "Aktiv in der Kassa" : "Nicht aktiv"}</div>
+      </div>
+      <div style={{ fontWeight: 900 }}>{formatEuro(props.product.price_cents)}</div>
+    </label>
   );
 }
 
@@ -1361,8 +1396,8 @@ function PrintQueue(props: { printerName: string }) {
       const msg = String(e?.message ?? e);
       await markPrintJobFailed(j.id, msg);
       await refresh();
-      alert("Druck fehlgeschlagen.\n\n" + msg);
-      window.alert(j.payload_text);
+      appAlert("Druck fehlgeschlagen.\n\n" + msg);
+      appAlert(j.payload_text);
     }
   }
 
@@ -1409,7 +1444,7 @@ function PrintQueue(props: { printerName: string }) {
                   Drucken
                 </button>
 
-                <button type="button" style={{ ...btn, flex: 1 }} onClick={() => window.alert(j.payload_text)}>
+                <button type="button" style={{ ...btn, flex: 1 }} onClick={() => appAlert(j.payload_text)}>
                   Notbeleg anzeigen
                 </button>
               </div>
@@ -1545,6 +1580,73 @@ function LockScreen(props: { pin: string; onUnlock: () => void }) {
             }}
           >
             Eingabe löschen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppDialog(props: {
+  type: "alert" | "confirm";
+  message: string;
+  onOk: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.55)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 10000,
+      }}
+    >
+      <div
+        style={{
+          width: "min(520px, 92vw)",
+          background: "var(--panel)",
+          border: "1px solid var(--border)",
+          borderRadius: 20,
+          padding: 18,
+          boxShadow: "var(--shadow)",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>
+          Hinweis
+        </div>
+
+        <div style={{ fontSize: 16, lineHeight: 1.4 }}>
+          {props.message}
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: props.type === "confirm" ? "1fr 1fr" : "1fr",
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          {props.type === "confirm" ? (
+            <button type="button" style={{ ...btn }} onClick={props.onCancel}>
+              Abbrechen
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            autoFocus
+            style={{
+              ...btn,
+              background: "rgba(34,197,94,.18)",
+              borderColor: "rgba(34,197,94,.45)",
+            }}
+            onClick={props.onOk}
+          >
+            OK
           </button>
         </div>
       </div>

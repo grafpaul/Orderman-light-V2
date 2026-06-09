@@ -456,6 +456,7 @@ export async function upsertProduct(p: {
 }
 
 export async function setProductActive(id: string, active: boolean): Promise<void> {
+  updateProductTodayActive
   const db = await getDb();
   await db.execute("UPDATE products SET active=$2 WHERE id=$1", [id, active ? 1 : 0]);
 }
@@ -500,7 +501,7 @@ function buildEscposText(args: {
   paymentType: "CASH" | "CARD";
 }) {
   const w = 32;
-  const money = (c: number) => (c / 100).toFixed(2).replace(".", ",") + " €";
+  const money = (c: number) => (c / 100).toFixed(2).replace(".", ",") + " EUR";
   const center = (s: string) => {
     if (s.length >= w) return s;
     return " ".repeat(Math.floor((w - s.length) / 2)) + s;
